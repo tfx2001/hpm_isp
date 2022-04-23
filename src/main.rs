@@ -24,7 +24,7 @@ struct Cli {
 enum Commands {
     /// Command of xpi nor flash
     Flash {
-        /// XPI<ID> to write or read
+        /// XPI<ID> to write or read (0-1)
         #[clap(parse(try_from_str = xpi_in_range))]
         id: MemoryId,
         #[clap(subcommand)]
@@ -47,7 +47,7 @@ enum FlashCommands {
         /// Offset address to read
         #[clap(parse(try_from_str = parse_hex))]
         offset: u32,
-        /// How many bytes to read
+        /// Bytes to read
         #[clap(parse(try_from_str = parse_hex))]
         size: u32,
         /// File to save
