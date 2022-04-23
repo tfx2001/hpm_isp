@@ -244,9 +244,7 @@ pub trait IspCommand: Interface {
     ///
     /// # Example
     ///
-    /// ```
-    /// # use hpm_isp::{hid, IspCommand, MemoryId};
-    /// # let device = hid::HpmDevice::open().unwrap();
+    /// ```ignore
     /// device.configure_memory(MemoryId::XPI0, 0x200);
     /// ```
     fn configure_memory(&self, memory_id: MemoryId, cfg_addr: u32) -> Result<(), Error> {
