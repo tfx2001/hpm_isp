@@ -1,5 +1,11 @@
 # hpm_isp
 
+[![Crate.io](https://img.shields.io/crates/v/hpm_isp)](https://crates.io/crates/hpm_isp)
+[![Crate.io](https://img.shields.io/crates/d/hpm_isp)](https://crates.io/crates/hpm_isp)
+[![Stars](https://img.shields.io/github/stars/tfx2001/hpm_isp)](https://github.com/tfx2001/hpm_isp)
+[![LICENSE](https://img.shields.io/github/license/tfx2001/hpm_isp)](https://github.com/tfx2001/hpm_isp/blob/main/LICENSE)
+[![Build](https://img.shields.io/github/workflow/status/tfx2001/hpm_isp/Build)](https://github.com/tfx2001/hpm_isp/actions/workflows/build.yml)
+
 A CLI ISP tool for HPMicro MCUs.
 
 ## Install
@@ -16,7 +22,7 @@ tfx2001 <2479727366@qq.com>
 ISP tool for HPMicro MCUs.                 
 
 USAGE:
-    hpm_isp.exe <SUBCOMMAND>
+    hpm_isp <SUBCOMMAND>
 
 OPTIONS:
     -h, --help       Print help information
