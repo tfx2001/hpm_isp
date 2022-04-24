@@ -35,6 +35,4 @@ SUBCOMMANDS:
 
 ## Example
 
-```shell
-hpm_isp flash 0 write 0x3000 ./hello_world.bin
-```
+[![asciicast](https://asciinema.org/a/489666.png)](https://asciinema.org/a/489666)
