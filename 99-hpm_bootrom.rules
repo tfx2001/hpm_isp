@@ -1,0 +1,4 @@
+# HPMicro MCU BootROM
+
+# HPM6700/HPM6400
+SUBSYSTEM=="usb", ATTRS{idVendor}=="34b7", ATTRS{idProduct}=="0001", MODE="666"
