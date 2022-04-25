@@ -14,7 +14,7 @@ use hpm_isp::{hid, isp_command::{IspCommand, MemoryId}};
 const MEMORY_CONFIG: [u8; 8] = [0x01, 0x00, 0xF9, 0xFC, 0x07, 0x00, 0x00, 0x00];
 
 #[derive(Parser)]
-#[clap(author, version, about)]
+#[clap(version, about)]
 struct Cli {
     #[clap(subcommand)]
     command: Commands,
