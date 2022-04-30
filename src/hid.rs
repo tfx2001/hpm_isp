@@ -5,7 +5,7 @@ use num_enum::FromPrimitive;
 use zerocopy::{AsBytes, FromBytes};
 
 use crate::hid::PacketType::Ack;
-use crate::isp_command::{Error, ErrorKind, Interface, IspCommand, Packet};
+use crate::isp_command::{Error, Interface, IspCommand, Packet};
 
 const VID: u16 = 0x34B7;
 const PID: u16 = 0x0001;
@@ -94,11 +94,11 @@ impl Interface for HpmDevice {
 
         match ack_packet.packet_type.into() {
             PacketType::Ack | PacketType::Abort => Ok(()),
-            _ => Err(Error::new(ErrorKind::Nak))
+            _ => Err(Error::Nak)
         }
     }
 
-    fn read(&self) -> Result<Packet, Error> {
+    fn read(&self, packet: &mut Packet) -> Result<u16, Error> {
         let mut buffer = [0u8; 516];
 
         // Device response stage
@@ -109,7 +109,8 @@ impl Interface for HpmDevice {
         let ack_packet = HidAcknowledgement::new(PacketType::Ack);
         self.device.write(ack_packet.as_bytes())?;
 
-        Ok(Packet::read_from_prefix(&response_packet.payload[..]).unwrap())
+        *packet = Packet::read_from_prefix(&response_packet.payload[..]).unwrap();
+        Ok(response_packet.length - 4)
     }
 }
 
@@ -117,6 +118,6 @@ impl IspCommand for HpmDevice {}
 
 impl From<HidError> for Error {
     fn from(_: HidError) -> Self {
-        Error::new(ErrorKind::TransferError)
+        Error::TransferError
     }
 }
