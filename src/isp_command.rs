@@ -1,6 +1,10 @@
 #![allow(unused)]
 
-use std::{cmp, error, fmt, mem};
+use std::{cmp, error, fmt, io, mem};
+use std::fmt::Debug;
+use std::fs::File;
+use std::io::{Read, Write};
+use std::path::Path;
 
 use zerocopy::{AsBytes, FromBytes};
 
@@ -52,7 +56,7 @@ impl QueryRuntimeEnvironment {
 impl From<QueryRuntimeEnvironment> for Packet {
     fn from(query_rte: QueryRuntimeEnvironment) -> Self {
         let mut payload: [u8; 508] = [0; 508];
-        &payload[..mem::size_of::<QueryRuntimeEnvironment>()].copy_from_slice(query_rte.as_bytes());
+        payload[..mem::size_of::<QueryRuntimeEnvironment>()].copy_from_slice(query_rte.as_bytes());
         Packet {
             cmd: Commands::QueryRuntimeEnv as u8,
             arg_num: 1,
@@ -96,7 +100,7 @@ impl ConfigureMemory {
 impl From<ConfigureMemory> for Packet {
     fn from(configure_memory: ConfigureMemory) -> Self {
         let mut payload: [u8; 508] = [0; 508];
-        &payload[..mem::size_of::<ConfigureMemory>()].copy_from_slice(configure_memory.as_bytes());
+        payload[..mem::size_of::<ConfigureMemory>()].copy_from_slice(configure_memory.as_bytes());
         Packet {
             cmd: Commands::ConfigureMemory as u8,
             arg_num: 2,
@@ -128,7 +132,7 @@ impl WriteMemory {
 impl From<WriteMemory> for Packet {
     fn from(write_memory: WriteMemory) -> Self {
         let mut payload: [u8; 508] = [0; 508];
-        &payload[..mem::size_of::<WriteMemory>()].copy_from_slice(write_memory.as_bytes());
+        payload[..mem::size_of::<WriteMemory>()].copy_from_slice(write_memory.as_bytes());
         Packet {
             cmd: Commands::WriteMemory as u8,
             arg_num: 3,
@@ -160,7 +164,7 @@ impl ReadMemory {
 impl From<ReadMemory> for Packet {
     fn from(write_memory: ReadMemory) -> Self {
         let mut payload: [u8; 508] = [0; 508];
-        &payload[..mem::size_of::<ReadMemory>()].copy_from_slice(write_memory.as_bytes());
+        payload[..mem::size_of::<ReadMemory>()].copy_from_slice(write_memory.as_bytes());
         Packet {
             cmd: Commands::ReadMemory as u8,
             arg_num: 3,
@@ -204,34 +208,21 @@ impl From<GenericCommandResponse> for Result<(), Error> {
         if resp.status == 0 {
             Ok(())
         } else {
-            Err(Error::new(ErrorKind::Other(resp.status)))
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct Error {
-    source: ErrorKind,
-}
-
-impl Error {
-    pub fn new(source: ErrorKind) -> Self {
-        Self {
-            source
+            Err(Error::Other(resp.status))
         }
     }
 }
 
 pub trait Interface {
     fn write(&self, packet: &Packet, length: u16) -> Result<(), Error>;
-    fn read(&self) -> Result<Packet, Error>;
+    fn read(&self, packet: &mut Packet) -> Result<u16, Error>;
 }
 
 pub trait IspCommand: Interface {
     fn query_runtime_environment(&self, id: RuntimeEnvironment) -> Result<(), Error> {
         let mut packet: Packet = QueryRuntimeEnvironment::new(id).into();
         self.write(&packet, mem::size_of::<QueryRuntimeEnvironment>() as u16)?;
-        packet = self.read()?;
+        self.read(&mut packet)?;
         todo!("data matching and error handling");
         Ok(())
     }
@@ -239,8 +230,8 @@ pub trait IspCommand: Interface {
     ///
     /// # Arguments
     ///
-    /// * `memory_id` - Memory ID to be configure
-    /// * `cfg_addr` - Configuration block address in RAM
+    /// * `memory_id`: Memory ID to be configure
+    /// * `cfg_addr`: Configuration block address in RAM
     ///
     /// # Example
     ///
@@ -251,7 +242,7 @@ pub trait IspCommand: Interface {
         let mut packet: Packet =
             ConfigureMemory::new(cfg_addr, memory_id).into();
         self.write(&packet, mem::size_of::<ConfigureMemory>() as u16)?;
-        packet = self.read()?;
+        self.read(&mut packet)?;
         let resp = GenericCommandResponse::read_from_prefix(&packet.payload[..]).unwrap();
         resp.into()
     }
@@ -259,11 +250,12 @@ pub trait IspCommand: Interface {
     fn write_memory<F>(&self, memory_id: MemoryId, offset: u32, data: &[u8], update_progress: F) -> Result<(), Error>
         where F: Fn(usize, usize)
     {
+        let mut bytes_writen = 496;
         let mut packet: Packet = WriteMemory::new(offset + memory_id.base_address(),
                                                   data.len() as u32,
                                                   memory_id).into();
         // Write first package
-        &packet.payload[12..cmp::min(508, data.len() + 12)]
+        packet.payload[12..cmp::min(508, data.len() + 12)]
             .copy_from_slice(&data[..cmp::min(508 - 12, data.len())]);
         self.write(&packet, cmp::min(508, data.len() + 12) as u16)?;
         update_progress(496, data.len());
@@ -272,16 +264,15 @@ pub trait IspCommand: Interface {
             packet.arg_num = 0;
             packet.cmd_type = CommandType::DataOnly as u8;
 
-            let mut written_bytes = 496;
-            data[508 - 12..].chunks(508).try_for_each(|x| {
-                &packet.payload[..x.len()].copy_from_slice(x);
-                written_bytes += x.len();
-                update_progress(written_bytes, data.len());
-                self.write(&packet, x.len() as u16)
+            data[508 - 12..].chunks(508).try_for_each(|i| {
+                packet.payload[..i.len()].copy_from_slice(i);
+                bytes_writen += i.len();
+                update_progress(bytes_writen, data.len());
+                self.write(&packet, i.len() as u16)
             })?;
         }
 
-        packet = self.read()?;
+        self.read(&mut packet)?;
         let resp = GenericCommandResponse::read_from_prefix(&packet.payload[..]).unwrap();
         resp.into()
     }
@@ -292,21 +283,79 @@ pub trait IspCommand: Interface {
         let mut packet: Packet = ReadMemory::new(offset + memory_id.base_address(),
                                                  data.len() as u32,
                                                  memory_id).into();
-        let mut read_bytes = 0;
+        let mut bytes_read = 0;
         let total_bytes = data.len();
 
         self.write(&packet, mem::size_of::<ReadMemory>() as u16)?;
 
-        packet = self.read()?;
+        self.read(&mut packet)?;
         let resp = GenericCommandResponse::read_from_prefix(&packet.payload[..]).unwrap();
         if resp.status == 0 {
-            data.chunks_mut(508).try_for_each::<_, Result<(), Error>>(|x| {
-                packet = self.read()?;
-                x.copy_from_slice(&packet.payload[..x.len()]);
-                read_bytes += x.len();
-                update_progress(read_bytes, total_bytes);
+            data.chunks_mut(508).try_for_each(|i| {
+                let length = self.read(&mut packet)?;
+                i.copy_from_slice(&packet.payload[..length as usize]);
+                bytes_read += length as usize;
+                update_progress(bytes_read, total_bytes);
                 Ok(())
             })
+        } else {
+            resp.into()
+        }
+    }
+
+    fn write_file<P, F>(&self, path: P, memory_id: MemoryId, offset: u32, update_progress: F) -> Result<(), Error>
+        where P: AsRef<Path>,
+              F: Fn(usize, usize)
+    {
+        let mut file = File::open(path)?;
+        let file_info = file.metadata()?;
+        let mut bytes_left = file_info.len() as usize;
+        let mut max_length = 508 - 12;
+        let mut slice_offset: usize = 12;
+        let mut write_length: usize;
+        let mut packet: Packet = WriteMemory::new(offset + memory_id.base_address(),
+                                                  file_info.len() as u32,
+                                                  memory_id).into();
+
+        while bytes_left > 0 {
+            write_length = cmp::min(max_length, bytes_left);
+            file.read(&mut packet.payload[slice_offset..write_length + slice_offset])?;
+            self.write(&packet, cmp::min(508, (write_length + slice_offset) as u16))?;
+            bytes_left -= write_length;
+            update_progress(file_info.len() as usize - bytes_left, file_info.len() as usize);
+
+            packet.arg_num = 0;
+            packet.cmd_type = CommandType::DataOnly as u8;
+            slice_offset = 0;
+            max_length = 508;
+        }
+
+        self.read(&mut packet)?;
+        let resp = GenericCommandResponse::read_from_prefix(&packet.payload[..]).unwrap();
+        resp.into()
+    }
+
+    fn read_file<P, F>(&self, path: P, memory_id: MemoryId, offset: u32, total_length: usize, update_progress: F) -> Result<(), Error>
+        where P: AsRef<Path>,
+              F: Fn(usize, usize)
+    {
+        let mut file = File::create(path)?;
+        let mut bytes_left = total_length;
+        let mut packet: Packet = ReadMemory::new(offset + memory_id.base_address(),
+                                                 total_length as u32,
+                                                 memory_id).into();
+
+        self.write(&packet, mem::size_of::<ReadMemory>() as u16)?;
+        self.read(&mut packet)?;
+        let resp = GenericCommandResponse::read_from_prefix(&packet.payload[..]).unwrap();
+        if resp.status == 0 {
+            while bytes_left > 0 {
+                let length = self.read(&mut packet)?;
+                file.write_all(&packet.payload[..length as usize])?;
+                bytes_left -= length as usize;
+                update_progress(total_length - bytes_left, total_length);
+            }
+            Ok(())
         } else {
             resp.into()
         }
@@ -314,35 +363,44 @@ pub trait IspCommand: Interface {
 }
 
 #[derive(Debug)]
-pub enum ErrorKind {
+pub enum Error {
     Nak,
     TransferError,
     Timeout,
+    IoError(io::Error),
     Other(u32),
 }
 
-impl ErrorKind {
+impl Error {
     fn as_str(&self) -> &'static str {
         match self {
-            ErrorKind::Nak => "negative acknowledge",
-            ErrorKind::TransferError => "transfer error",
-            ErrorKind::Timeout => "timeout",
-            ErrorKind::Other(_) => "other error",
+            Error::Nak => "negative acknowledge",
+            Error::TransferError => "transfer error",
+            Error::Timeout => "timeout",
+            Error::IoError(_) => "io error",
+            Error::Other(_) => "other error",
         }
     }
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.source {
-            ErrorKind::Other(code) => write!(f, "{}: {}", self.source.as_str(), code),
-            _ => write!(f, "{}", self.source.as_str()),
+        match &self {
+            Error::IoError(e) => write!(f, "{}: {}", self.as_str(), e),
+            Error::Other(code) => write!(f, "{}: {}", self.as_str(), code),
+            _ => write!(f, "{}", self.as_str()),
         }
     }
 }
 
 impl error::Error for Error {
     fn description(&self) -> &str {
-        self.source.as_str()
+        self.as_str()
+    }
+}
+
+impl From<io::Error> for Error {
+    fn from(e: io::Error) -> Self {
+        Error::IoError(e)
     }
 }

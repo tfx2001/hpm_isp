@@ -20,7 +20,7 @@ An ISP (In-system programming) tool for HPMicro MCUs.
 cargo install hpm_isp
 ```
 
-### For Linux user
+### For Linux users
 
 ```shell
 sudo cp 99-hpm_bootrom.rules /etc/udev/rules.d/

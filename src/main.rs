@@ -1,8 +1,6 @@
 #![allow(irrefutable_let_patterns)]
 
 use std::error::Error;
-use std::fs::File;
-use std::io::{Read, Write};
 use std::num::ParseIntError;
 use std::path::{Path, PathBuf};
 
@@ -95,9 +93,6 @@ fn write_file<D, P>(path: P, memory_id: MemoryId, offset: u32, device: &D) -> Re
     where P: AsRef<Path>,
           D: IspCommand
 {
-    let mut file = File::open(path)?;
-    let mut buffer = Vec::new();
-
     // Configure flash
     device.write_memory(MemoryId::ILM,
                         0x200,
@@ -105,10 +100,12 @@ fn write_file<D, P>(path: P, memory_id: MemoryId, offset: u32, device: &D) -> Re
                         |_, _| {})?;
     device.configure_memory(memory_id, 0x0000_0200)?;
     // Write flash
-    file.read_to_end(&mut buffer).unwrap();
-    let pb = new_progress_bar(buffer.len() as u64);
-    device.write_memory(memory_id, offset, &buffer,
-                        |w, _| pb.set_position(w as u64))?;
+    let pb = new_progress_bar(0);
+    device.write_file(path, memory_id, offset,
+                      |w, l| {
+                          pb.set_length(l as u64);
+                          pb.set_position(w as u64);
+                      })?;
     pb.finish();
     Ok(())
 }
@@ -117,8 +114,6 @@ fn read_file<D, P>(path: P, memory_id: MemoryId, offset: u32, length: usize, dev
     where D: IspCommand,
           P: AsRef<Path>
 {
-    let mut buffer = Vec::new();
-
     // Configure flash
     device.write_memory(MemoryId::ILM,
                         0x200,
@@ -127,13 +122,9 @@ fn read_file<D, P>(path: P, memory_id: MemoryId, offset: u32, length: usize, dev
     device.configure_memory(memory_id, 0x0000_0200)?;
     // Read flash
     let pb = new_progress_bar(length as u64);
-    buffer.resize(length, 0);
-    device.read_memory(memory_id, offset, &mut buffer,
-                       |b, _| pb.set_position(b as u64))?;
+    device.read_file(path, memory_id, offset, length,
+                     |b, _| pb.set_position(b as u64))?;
     pb.finish();
-
-    let mut file = File::create(path)?;
-    file.write_all(&buffer).unwrap();
     Ok(())
 }
 
