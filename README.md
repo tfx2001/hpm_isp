@@ -29,4 +29,4 @@ sudo udevadm control --reload-rules
 
 ## Usage
 
-[![asciicast](https://asciinema.org/a/489666.svg)](https://asciinema.org/a/489666)
+[![asciicast](https://asciinema.org/a/491359.svg)](https://asciinema.org/a/491359)

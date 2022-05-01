@@ -287,9 +287,9 @@ pub trait IspCommand: Interface {
         let total_bytes = data.len();
 
         self.write(&packet, mem::size_of::<ReadMemory>() as u16)?;
-
         self.read(&mut packet)?;
         let resp = GenericCommandResponse::read_from_prefix(&packet.payload[..]).unwrap();
+        
         if resp.status == 0 {
             data.chunks_mut(508).try_for_each(|i| {
                 let length = self.read(&mut packet)?;

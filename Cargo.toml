@@ -1,8 +1,8 @@
 [package]
 name = "hpm_isp"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
-authors = ["tfx2001 <2479727366@qq.com>"]
+authors = ["tfx2001 <tfx2001@outlook.com>"]
 license = "MIT"
 description = "ISP tool for HPMicro MCUs."
 repository = "https://github.com/tfx2001/hpm_isp"
