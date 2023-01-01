@@ -4,7 +4,7 @@
 [![Crate.io](https://img.shields.io/crates/d/hpm_isp)](https://crates.io/crates/hpm_isp)
 [![Stars](https://img.shields.io/github/stars/tfx2001/hpm_isp)](https://github.com/tfx2001/hpm_isp)
 [![LICENSE](https://img.shields.io/github/license/tfx2001/hpm_isp)](https://github.com/tfx2001/hpm_isp/blob/main/LICENSE)
-[![Build](https://img.shields.io/github/workflow/status/tfx2001/hpm_isp/Build)](https://github.com/tfx2001/hpm_isp/actions/workflows/build.yml)
+[![Build](https://github.com/tfx2001/hpm_isp/actions/workflows/build.yml/badge.svg)](https://github.com/tfx2001/hpm_isp/actions/workflows/build.yml)
 
 An ISP (In-system programming) tool for HPMicro MCUs.
 
