@@ -1,10 +1,10 @@
 #![allow(unused)]
 
-use std::{cmp, error, fmt, io, mem};
 use std::fmt::Debug;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::Path;
+use std::{cmp, error, fmt, io, mem};
 
 use zerocopy::{AsBytes, FromBytes};
 
@@ -32,14 +32,12 @@ enum Commands {
     ReadMemory = 0x05,
 }
 
-
 #[repr(u8)]
 enum CommandType {
     CommandData = 0x00,
     DataOnly = 0x01,
     ResponseOnly = 0x02,
 }
-
 
 #[derive(AsBytes)]
 #[repr(C, packed)]
@@ -239,21 +237,30 @@ pub trait IspCommand: Interface {
     /// device.configure_memory(MemoryId::XPI0, 0x200);
     /// ```
     fn configure_memory(&self, memory_id: MemoryId, cfg_addr: u32) -> Result<(), Error> {
-        let mut packet: Packet =
-            ConfigureMemory::new(cfg_addr, memory_id).into();
+        let mut packet: Packet = ConfigureMemory::new(cfg_addr, memory_id).into();
         self.write(&packet, mem::size_of::<ConfigureMemory>() as u16)?;
         self.read(&mut packet)?;
         let resp = GenericCommandResponse::read_from_prefix(&packet.payload[..]).unwrap();
         resp.into()
     }
 
-    fn write_memory<F>(&self, memory_id: MemoryId, offset: u32, data: &[u8], update_progress: F) -> Result<(), Error>
-        where F: Fn(usize, usize)
+    fn write_memory<F>(
+        &self,
+        memory_id: MemoryId,
+        offset: u32,
+        data: &[u8],
+        update_progress: F,
+    ) -> Result<(), Error>
+    where
+        F: Fn(usize, usize),
     {
         let mut bytes_writen = 496;
-        let mut packet: Packet = WriteMemory::new(offset + memory_id.base_address(),
-                                                  data.len() as u32,
-                                                  memory_id).into();
+        let mut packet: Packet = WriteMemory::new(
+            offset + memory_id.base_address(),
+            data.len() as u32,
+            memory_id,
+        )
+        .into();
         // Write first package
         packet.payload[12..cmp::min(508, data.len() + 12)]
             .copy_from_slice(&data[..cmp::min(508 - 12, data.len())]);
@@ -277,19 +284,29 @@ pub trait IspCommand: Interface {
         resp.into()
     }
 
-    fn read_memory<F>(&self, memory_id: MemoryId, offset: u32, data: &mut [u8], update_progress: F) -> Result<(), Error>
-        where F: Fn(usize, usize)
+    fn read_memory<F>(
+        &self,
+        memory_id: MemoryId,
+        offset: u32,
+        data: &mut [u8],
+        update_progress: F,
+    ) -> Result<(), Error>
+    where
+        F: Fn(usize, usize),
     {
-        let mut packet: Packet = ReadMemory::new(offset + memory_id.base_address(),
-                                                 data.len() as u32,
-                                                 memory_id).into();
+        let mut packet: Packet = ReadMemory::new(
+            offset + memory_id.base_address(),
+            data.len() as u32,
+            memory_id,
+        )
+        .into();
         let mut bytes_read = 0;
         let total_bytes = data.len();
 
         self.write(&packet, mem::size_of::<ReadMemory>() as u16)?;
         self.read(&mut packet)?;
         let resp = GenericCommandResponse::read_from_prefix(&packet.payload[..]).unwrap();
-        
+
         if resp.status == 0 {
             data.chunks_mut(508).try_for_each(|i| {
                 let length = self.read(&mut packet)?;
@@ -303,9 +320,16 @@ pub trait IspCommand: Interface {
         }
     }
 
-    fn write_file<P, F>(&self, path: P, memory_id: MemoryId, offset: u32, update_progress: F) -> Result<(), Error>
-        where P: AsRef<Path>,
-              F: Fn(usize, usize)
+    fn write_file<P, F>(
+        &self,
+        path: P,
+        memory_id: MemoryId,
+        offset: u32,
+        update_progress: F,
+    ) -> Result<(), Error>
+    where
+        P: AsRef<Path>,
+        F: Fn(usize, usize),
     {
         let mut file = File::open(path)?;
         let file_info = file.metadata()?;
@@ -313,16 +337,22 @@ pub trait IspCommand: Interface {
         let mut max_length = 508 - 12;
         let mut slice_offset: usize = 12;
         let mut write_length: usize;
-        let mut packet: Packet = WriteMemory::new(offset + memory_id.base_address(),
-                                                  file_info.len() as u32,
-                                                  memory_id).into();
+        let mut packet: Packet = WriteMemory::new(
+            offset + memory_id.base_address(),
+            file_info.len() as u32,
+            memory_id,
+        )
+        .into();
 
         while bytes_left > 0 {
             write_length = cmp::min(max_length, bytes_left);
             file.read(&mut packet.payload[slice_offset..write_length + slice_offset])?;
             self.write(&packet, cmp::min(508, (write_length + slice_offset) as u16))?;
             bytes_left -= write_length;
-            update_progress(file_info.len() as usize - bytes_left, file_info.len() as usize);
+            update_progress(
+                file_info.len() as usize - bytes_left,
+                file_info.len() as usize,
+            );
 
             packet.arg_num = 0;
             packet.cmd_type = CommandType::DataOnly as u8;
@@ -335,15 +365,26 @@ pub trait IspCommand: Interface {
         resp.into()
     }
 
-    fn read_file<P, F>(&self, path: P, memory_id: MemoryId, offset: u32, total_length: usize, update_progress: F) -> Result<(), Error>
-        where P: AsRef<Path>,
-              F: Fn(usize, usize)
+    fn read_file<P, F>(
+        &self,
+        path: P,
+        memory_id: MemoryId,
+        offset: u32,
+        total_length: usize,
+        update_progress: F,
+    ) -> Result<(), Error>
+    where
+        P: AsRef<Path>,
+        F: Fn(usize, usize),
     {
         let mut file = File::create(path)?;
         let mut bytes_left = total_length;
-        let mut packet: Packet = ReadMemory::new(offset + memory_id.base_address(),
-                                                 total_length as u32,
-                                                 memory_id).into();
+        let mut packet: Packet = ReadMemory::new(
+            offset + memory_id.base_address(),
+            total_length as u32,
+            memory_id,
+        )
+        .into();
 
         self.write(&packet, mem::size_of::<ReadMemory>() as u16)?;
         self.read(&mut packet)?;

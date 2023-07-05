@@ -90,11 +90,12 @@ impl Interface for HpmDevice {
         // Device ACK/NAK/Abort stage
         let mut buffer: [u8; 516] = [0u8; 516];
         self.device.read(&mut buffer)?;
-        let ack_packet: HidAcknowledgement = HidAcknowledgement::read_from_prefix(&buffer[..]).unwrap();
+        let ack_packet: HidAcknowledgement =
+            HidAcknowledgement::read_from_prefix(&buffer[..]).unwrap();
 
         match ack_packet.packet_type.into() {
             PacketType::Ack | PacketType::Abort => Ok(()),
-            _ => Err(Error::Nak)
+            _ => Err(Error::Nak),
         }
     }
 
@@ -103,7 +104,8 @@ impl Interface for HpmDevice {
 
         // Device response stage
         self.device.read(&mut buffer)?;
-        let response_packet: HidPayloadPacket = HidPayloadPacket::read_from_prefix(&buffer[..]).unwrap();
+        let response_packet: HidPayloadPacket =
+            HidPayloadPacket::read_from_prefix(&buffer[..]).unwrap();
 
         // Host ACK/NAK/Abort stage
         let ack_packet = HidAcknowledgement::new(PacketType::Ack);

@@ -7,7 +7,10 @@ use std::path::{Path, PathBuf};
 use clap::{Parser, Subcommand};
 use indicatif::{ProgressBar, ProgressStyle};
 
-use hpm_isp::{hid, isp_command::{IspCommand, MemoryId}};
+use hpm_isp::{
+    hid,
+    isp_command::{IspCommand, MemoryId},
+};
 
 const MEMORY_CONFIG: [u8; 8] = [0x01, 0x00, 0xF9, 0xFC, 0x07, 0x00, 0x00, 0x00];
 
@@ -27,7 +30,7 @@ enum Commands {
         id: MemoryId,
         #[clap(subcommand)]
         command: FlashCommands,
-    }
+    },
 }
 
 #[derive(Subcommand)]
@@ -66,7 +69,7 @@ fn xpi_in_range(s: &str) -> Result<MemoryId, String> {
         Ok(0u32) => Ok(MemoryId::XPI0),
         Ok(1u32) => Ok(MemoryId::XPI1),
         Ok(_) => Err("ID must be 0 or 1".to_string()),
-        Err(e) => Err(e.to_string())
+        Err(e) => Err(e.to_string()),
     }
 }
 
@@ -74,8 +77,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
     let device = hid::HpmDevice::open().or_else(|_| Err("can't open HPMicro usb device"))?;
 
-
-    if let Commands::Flash { id, command: flash_command } = cli.command {
+    if let Commands::Flash {
+        id,
+        command: flash_command,
+    } = cli.command
+    {
         match flash_command {
             FlashCommands::Write { offset, file } => {
                 write_file(file, id, offset, &device)?;
@@ -89,41 +95,48 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn write_file<D, P>(path: P, memory_id: MemoryId, offset: u32, device: &D) -> Result<(), Box<dyn Error>>
-    where P: AsRef<Path>,
-          D: IspCommand
+fn write_file<D, P>(
+    path: P,
+    memory_id: MemoryId,
+    offset: u32,
+    device: &D,
+) -> Result<(), Box<dyn Error>>
+where
+    P: AsRef<Path>,
+    D: IspCommand,
 {
     // Configure flash
-    device.write_memory(MemoryId::ILM,
-                        0x200,
-                        &MEMORY_CONFIG,
-                        |_, _| {})?;
+    device.write_memory(MemoryId::ILM, 0x200, &MEMORY_CONFIG, |_, _| {})?;
     device.configure_memory(memory_id, 0x0000_0200)?;
     // Write flash
     let pb = new_progress_bar(0);
-    device.write_file(path, memory_id, offset,
-                      |w, l| {
-                          pb.set_length(l as u64);
-                          pb.set_position(w as u64);
-                      })?;
+    device.write_file(path, memory_id, offset, |w, l| {
+        pb.set_length(l as u64);
+        pb.set_position(w as u64);
+    })?;
     pb.finish();
     Ok(())
 }
 
-fn read_file<D, P>(path: P, memory_id: MemoryId, offset: u32, length: usize, device: &D) -> Result<(), Box<dyn Error>>
-    where D: IspCommand,
-          P: AsRef<Path>
+fn read_file<D, P>(
+    path: P,
+    memory_id: MemoryId,
+    offset: u32,
+    length: usize,
+    device: &D,
+) -> Result<(), Box<dyn Error>>
+where
+    D: IspCommand,
+    P: AsRef<Path>,
 {
     // Configure flash
-    device.write_memory(MemoryId::ILM,
-                        0x200,
-                        &MEMORY_CONFIG,
-                        |_, _| {})?;
+    device.write_memory(MemoryId::ILM, 0x200, &MEMORY_CONFIG, |_, _| {})?;
     device.configure_memory(memory_id, 0x0000_0200)?;
     // Read flash
     let pb = new_progress_bar(length as u64);
-    device.read_file(path, memory_id, offset, length,
-                     |b, _| pb.set_position(b as u64))?;
+    device.read_file(path, memory_id, offset, length, |b, _| {
+        pb.set_position(b as u64)
+    })?;
     pb.finish();
     Ok(())
 }
@@ -132,6 +145,7 @@ fn new_progress_bar(len: u64) -> ProgressBar {
     let pb = ProgressBar::new(len);
     pb.set_style(ProgressStyle::default_bar()
         .template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({eta})")
+        .unwrap()
         .progress_chars("#>-"));
     pb
 }

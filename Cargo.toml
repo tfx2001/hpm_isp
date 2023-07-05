@@ -1,15 +1,2 @@
-[package]
-name = "hpm_isp"
-version = "0.1.1"
-edition = "2021"
-authors = ["tfx2001 <tfx2001@outlook.com>"]
-license = "MIT"
-description = "ISP tool for HPMicro MCUs."
-repository = "https://github.com/tfx2001/hpm_isp"
-
-[dependencies]
-clap = { version = "3.1", features = ["color", "derive"] }
-hidapi = "1.4.1"
-indicatif = "0.16.2"
-zerocopy = "0.6.1"
-num_enum = "0.5.7"
+[workspace]
+members = ["hpm_isp"]
