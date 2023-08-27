@@ -6,9 +6,9 @@ use std::io::{Read, Write};
 use std::path::Path;
 use std::{cmp, error, fmt, io, mem};
 
-use zerocopy::{AsBytes, FromBytes};
+use zerocopy::{AsBytes, FromBytes, FromZeroes};
 
-#[derive(AsBytes, FromBytes)]
+#[derive(AsBytes, FromZeroes, FromBytes)]
 #[repr(C, packed)]
 pub struct Packet {
     cmd: u8,
@@ -195,7 +195,7 @@ impl MemoryId {
     }
 }
 
-#[derive(FromBytes)]
+#[derive(FromZeroes, FromBytes)]
 #[repr(C, packed)]
 struct GenericCommandResponse {
     status: u32,
