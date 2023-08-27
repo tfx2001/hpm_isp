@@ -29,4 +29,15 @@ sudo udevadm control --reload-rules
 
 ## Usage
 
+```shell
+# Write to flash (use default memory config)
+hpm_isp flash 0 write 0x400 flash.bin
+# Write to flash (use custom memory config)
+hpm_isp flash -c hpm_isp.bin 0 write 0x400 flash.bin
+# Read from flash
+hpm_isp read -c hpm_isp.bin 0 read 0x0 0x4000 flash.bin
+# Use config wizard to generate config file (save to hpm_isp.bin)
+hpm_isp wizard
+```
+
 [![asciicast](https://asciinema.org/a/491359.svg)](https://asciinema.org/a/491359)

@@ -2,19 +2,34 @@
 
 use hidapi::{HidApi, HidDevice, HidError};
 use num_enum::FromPrimitive;
-use zerocopy::{AsBytes, FromBytes};
+use strum::{EnumIter, IntoEnumIterator};
+use zerocopy::{AsBytes, FromBytes, FromZeroes};
 
 use crate::hid::PacketType::Ack;
 use crate::isp_command::{Error, Interface, IspCommand, Packet};
 
-const VID: u16 = 0x34B7;
-const PID: u16 = 0x0001;
+#[derive(EnumIter, Clone, Copy)]
+#[repr(u16)]
+enum Family {
+    HPM6700_6400 = 0x0001,
+    HPM6300 = 0x0002,
+}
+
+impl Family {
+    pub fn pid() -> u16 {
+        0x34b7
+    }
+
+    pub fn vid(&self) -> u16 {
+        *self as u16
+    }
+}
 
 pub struct HpmDevice {
     device: HidDevice,
 }
 
-#[derive(AsBytes, FromBytes)]
+#[derive(AsBytes, FromZeroes, FromBytes)]
 #[repr(C, packed)]
 struct HidPayloadPacket {
     dir: u8,
@@ -23,7 +38,7 @@ struct HidPayloadPacket {
     payload: [u8; 512],
 }
 
-#[derive(AsBytes, FromBytes)]
+#[derive(AsBytes, FromZeroes, FromBytes)]
 #[repr(C, packed)]
 struct HidAcknowledgement {
     dir: u8,
@@ -70,10 +85,12 @@ impl HidAcknowledgement {
 }
 
 impl HpmDevice {
-    pub fn open() -> Result<Self, HidError> {
+    pub fn open() -> Result<Self, Box<dyn std::error::Error>> {
         let api = HidApi::new().unwrap();
         // Connect to device using its VID and PID
-        let device = api.open(VID, PID)?;
+        let device = Family::iter()
+            .find_map(|chip| api.open(Family::pid(), chip.vid()).ok())
+            .ok_or("Can't find any HPMicro device")?;
         Ok(Self { device })
     }
 }

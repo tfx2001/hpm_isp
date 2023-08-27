@@ -9,7 +9,10 @@ repository = "https://github.com/tfx2001/hpm_isp"
 
 [dependencies]
 clap = { version = "3.1", features = ["color", "derive"] }
-hidapi = "1.4.1"
-indicatif = "0.16.2"
-zerocopy = "0.6.1"
-num_enum = "0.5.7"
+hidapi = "2.4"
+indicatif = "0.17"
+dialoguer = "0.10"
+zerocopy = { version = "0.7", features = ["derive"] }
+num_enum = "0.7"
+hpm-rt = "0.1"
+strum = { version = "0.25", features = ["derive"] }

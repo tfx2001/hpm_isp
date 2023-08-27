@@ -1,18 +1,22 @@
 #![allow(irrefutable_let_patterns)]
 
+mod config;
+
 use std::error::Error;
+use std::fs;
+use std::io::Read;
 use std::num::ParseIntError;
 use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
+use config::config_wizard;
 use indicatif::{ProgressBar, ProgressStyle};
 
 use hpm_isp::{
     hid,
     isp_command::{IspCommand, MemoryId},
 };
-
-const MEMORY_CONFIG: [u8; 8] = [0x01, 0x00, 0xF9, 0xFC, 0x07, 0x00, 0x00, 0x00];
+use hpm_rt::XpiNorConfigurationOption;
 
 #[derive(Parser)]
 #[clap(version, about)]
@@ -30,6 +34,15 @@ enum Commands {
         id: MemoryId,
         #[clap(subcommand)]
         command: FlashCommands,
+        /// Path of memory config file
+        #[clap(short, long)]
+        config: Option<PathBuf>,
+    },
+    /// Command of wizard to generate memory config file
+    Wizard {
+        /// Path of memory config file
+        #[clap(short, long, default_value = "hpm_isp.bin")]
+        path: PathBuf,
     },
 }
 
@@ -75,21 +88,44 @@ fn xpi_in_range(s: &str) -> Result<MemoryId, String> {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
-    let device = hid::HpmDevice::open().or_else(|_| Err("can't open HPMicro usb device"))?;
 
     if let Commands::Flash {
-        id,
+        id: memory_id,
         command: flash_command,
+        config,
     } = cli.command
     {
+        let device = hid::HpmDevice::open().or_else(|_| Err("can't open HPMicro usb device"))?;
+        let mut memory_config_bin = Vec::new();
+
+        if let Some(path) = config {
+            let mut config_file = fs::File::open(path)?;
+
+            memory_config_bin.resize(12, 0);
+            config_file.read_exact(memory_config_bin.as_mut_slice())?;
+            if memory_config_bin[3] != 0xFC || memory_config_bin[2] != 0xF9 {
+                return Err("Invalid memory config file".into());
+            }
+        } else {
+            let xpi_config = XpiNorConfigurationOption::new();
+
+            xpi_config.write(&mut memory_config_bin)?;
+        }
+
+        // Config memory
+        device.write_memory(MemoryId::ILM, 0x200, &memory_config_bin, |_, _| {})?;
+        device.configure_memory(memory_id, MemoryId::ILM.base_address() + 0x200)?;
+
         match flash_command {
             FlashCommands::Write { offset, file } => {
-                write_file(file, id, offset, &device)?;
+                write_file(file, memory_id, offset, &device)?;
             }
             FlashCommands::Read { offset, size, file } => {
-                read_file(file, id, offset, size as usize, &device)?;
+                read_file(file, memory_id, offset, size as usize, &device)?;
             }
         }
+    } else if let Commands::Wizard { path } = cli.command {
+        config_wizard(path)?;
     }
 
     Ok(())
@@ -105,9 +141,6 @@ where
     P: AsRef<Path>,
     D: IspCommand,
 {
-    // Configure flash
-    device.write_memory(MemoryId::ILM, 0x200, &MEMORY_CONFIG, |_, _| {})?;
-    device.configure_memory(memory_id, 0x0000_0200)?;
     // Write flash
     let pb = new_progress_bar(0);
     device.write_file(path, memory_id, offset, |w, l| {
@@ -129,9 +162,6 @@ where
     D: IspCommand,
     P: AsRef<Path>,
 {
-    // Configure flash
-    device.write_memory(MemoryId::ILM, 0x200, &MEMORY_CONFIG, |_, _| {})?;
-    device.configure_memory(memory_id, 0x0000_0200)?;
     // Read flash
     let pb = new_progress_bar(length as u64);
     device.read_file(path, memory_id, offset, length, |b, _| {
@@ -145,6 +175,7 @@ fn new_progress_bar(len: u64) -> ProgressBar {
     let pb = ProgressBar::new(len);
     pb.set_style(ProgressStyle::default_bar()
         .template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({eta})")
+        .unwrap()
         .progress_chars("#>-"));
     pb
 }
