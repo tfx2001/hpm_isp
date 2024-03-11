@@ -13,6 +13,7 @@ use crate::isp_command::{Error, Interface, IspCommand, Packet};
 enum Family {
     HPM6700_6400 = 0x0001,
     HPM6300 = 0x0002,
+    HPM6200 = 0x0003,
 }
 
 impl Family {
