@@ -14,6 +14,8 @@ enum Family {
     HPM6700_6400 = 0x0001,
     HPM6300 = 0x0002,
     HPM6200 = 0x0003,
+    HPM6800 = 0x0004,
+    HPM5300 = 0x0005,
 }
 
 impl Family {
