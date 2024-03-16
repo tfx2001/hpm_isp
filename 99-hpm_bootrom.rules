@@ -2,3 +2,11 @@
 
 # HPM6700/HPM6400
 SUBSYSTEM=="usb", ATTRS{idVendor}=="34b7", ATTRS{idProduct}=="0001", MODE="666"
+# HPM6300
+SUBSYSTEM=="usb", ATTRS{idVendor}=="34b7", ATTRS{idProduct}=="0002", MODE="666"
+# HPM6200
+SUBSYSTEM=="usb", ATTRS{idVendor}=="34b7", ATTRS{idProduct}=="0003", MODE="666"
+# HPM6800
+SUBSYSTEM=="usb", ATTRS{idVendor}=="34b7", ATTRS{idProduct}=="0004", MODE="666"
+# HPM5300
+SUBSYSTEM=="usb", ATTRS{idVendor}=="34b7", ATTRS{idProduct}=="0005", MODE="666"
