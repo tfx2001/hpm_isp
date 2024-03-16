@@ -1,2 +1,3 @@
 [workspace]
 members = ["hpm_isp"]
+resolver = "2"
