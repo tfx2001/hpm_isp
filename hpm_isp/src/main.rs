@@ -18,6 +18,8 @@ use hpm_isp::{
 };
 use hpm_rt::XpiNorConfigurationOption;
 
+const DEFAULT_CONFIG_FILE: &'static str = "hpm_isp.bin";
+
 #[derive(Parser)]
 #[clap(version, about)]
 struct Cli {
@@ -41,7 +43,7 @@ enum Commands {
     /// Command of wizard to generate memory config file
     Wizard {
         /// Path of memory config file
-        #[clap(short, long, default_value = "hpm_isp.bin")]
+        #[clap(short, long, default_value = DEFAULT_CONFIG_FILE)]
         path: PathBuf,
     },
 }
@@ -97,19 +99,25 @@ fn main() -> Result<(), Box<dyn Error>> {
     {
         let device = hid::HpmDevice::open().or_else(|_| Err("can't open HPMicro usb device"))?;
         let mut memory_config_bin = Vec::new();
+        let is_default = config.is_none();
+        let config_path = config.unwrap_or(DEFAULT_CONFIG_FILE.into());
 
-        if let Some(path) = config {
-            let mut config_file = fs::File::open(path)?;
-
-            memory_config_bin.resize(12, 0);
-            config_file.read_exact(memory_config_bin.as_mut_slice())?;
-            if memory_config_bin[3] != 0xFC || memory_config_bin[2] != 0xF9 {
-                return Err("Invalid memory config file".into());
+        match fs::File::open(config_path) {
+            Ok(mut config_file) => {
+                memory_config_bin.resize(12, 0);
+                config_file.read_exact(memory_config_bin.as_mut_slice())?;
+                if memory_config_bin[3] != 0xFC || memory_config_bin[2] != 0xF9 {
+                    return Err("Invalid memory config file".into());
+                }
             }
-        } else {
-            let xpi_config = XpiNorConfigurationOption::new();
-
-            xpi_config.write(&mut memory_config_bin)?;
+            // Use default config file and it isn't exists
+            Err(_) if is_default => {
+                let xpi_config = XpiNorConfigurationOption::new();
+                xpi_config.write(&mut memory_config_bin)?;
+            }
+            Err(err) => {
+                Err(err)?;
+            }
         }
 
         // Config memory

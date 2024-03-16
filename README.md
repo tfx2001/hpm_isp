@@ -33,10 +33,12 @@ sudo udevadm control --reload-rules
 # Write to flash (use default memory config)
 hpm_isp flash 0 write 0x400 flash.bin
 # Write to flash (use custom memory config)
+# Note: if hpm_isp.bin exists in the working directory, it will be used by default.
+# So you don't need to pass -c option explicitly.
 hpm_isp flash -c hpm_isp.bin 0 write 0x400 flash.bin
 # Read from flash
-hpm_isp read -c hpm_isp.bin 0 read 0x0 0x4000 flash.bin
-# Use config wizard to generate config file (save to hpm_isp.bin)
+hpm_isp read 0 read 0x0 0x4000 flash.bin
+# Use config wizard to generate config file (save as hpm_isp.bin)
 hpm_isp wizard
 ```
 
