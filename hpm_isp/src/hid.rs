@@ -1,36 +1,11 @@
-#![allow(unused)]
+use std::fmt::Display;
 
 use hidapi::{HidApi, HidDevice, HidError};
 use num_enum::FromPrimitive;
 use strum::{EnumIter, IntoEnumIterator};
 use zerocopy::{AsBytes, FromBytes, FromZeroes};
 
-use crate::hid::PacketType::Ack;
 use crate::isp_command::{Error, Interface, IspCommand, Packet};
-
-#[derive(EnumIter, Clone, Copy)]
-#[repr(u16)]
-enum Family {
-    HPM6700_6400 = 0x0001,
-    HPM6300 = 0x0002,
-    HPM6200 = 0x0003,
-    HPM6800 = 0x0004,
-    HPM5300 = 0x0005,
-}
-
-impl Family {
-    pub fn pid() -> u16 {
-        0x34b7
-    }
-
-    pub fn vid(&self) -> u16 {
-        *self as u16
-    }
-}
-
-pub struct HpmDevice {
-    device: HidDevice,
-}
 
 #[derive(AsBytes, FromZeroes, FromBytes)]
 #[repr(C, packed)]
@@ -87,14 +62,59 @@ impl HidAcknowledgement {
     }
 }
 
+#[derive(EnumIter, Clone, Copy)]
+#[repr(u16)]
+pub enum Family {
+    HPM6700_6400 = 0x0001,
+    HPM6300 = 0x0002,
+    HPM6200 = 0x0003,
+    HPM6800 = 0x0004,
+    HPM5300 = 0x0005,
+}
+
+impl Family {
+    pub fn pid() -> u16 {
+        0x34b7
+    }
+
+    pub fn vid(&self) -> u16 {
+        *self as u16
+    }
+}
+
+impl Display for Family {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = match self {
+            Family::HPM6700_6400 => "HPM6700/6400",
+            Family::HPM6300 => "HPM6300",
+            Family::HPM6200 => "HPM6200",
+            Family::HPM6800 => "HPM6800",
+            Family::HPM5300 => "HPM5300",
+        };
+        write!(f, "{name}")
+    }
+}
+
+pub struct HpmDevice {
+    device: HidDevice,
+    family: Family,
+}
+
 impl HpmDevice {
     pub fn open() -> Result<Self, Box<dyn std::error::Error>> {
         let api = HidApi::new().unwrap();
         // Connect to device using its VID and PID
-        let device = Family::iter()
-            .find_map(|chip| api.open(Family::pid(), chip.vid()).ok())
+        let (device, family) = Family::iter()
+            .find_map(|chip| match api.open(Family::pid(), chip.vid()).ok() {
+                Some(device) => Some((device, chip)),
+                None => None,
+            })
             .ok_or("Can't find any HPMicro device")?;
-        Ok(Self { device })
+        Ok(Self { device, family })
+    }
+
+    pub fn family(&self) -> Family {
+        self.family
     }
 }
 
