@@ -102,6 +102,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         let is_default = config.is_none();
         let config_path = config.unwrap_or(DEFAULT_CONFIG_FILE.into());
 
+        println!("Found chip: {}", device.family());
+
         match fs::File::open(config_path) {
             Ok(mut config_file) => {
                 memory_config_bin.resize(12, 0);
