@@ -10,3 +10,5 @@ SUBSYSTEM=="usb", ATTRS{idVendor}=="34b7", ATTRS{idProduct}=="0003", MODE="666"
 SUBSYSTEM=="usb", ATTRS{idVendor}=="34b7", ATTRS{idProduct}=="0004", MODE="666"
 # HPM5300
 SUBSYSTEM=="usb", ATTRS{idVendor}=="34b7", ATTRS{idProduct}=="0005", MODE="666"
+# HPM6E00
+SUBSYSTEM=="usb", ATTRS{idVendor}=="34b7", ATTRS{idProduct}=="0006", MODE="666"
