@@ -70,6 +70,7 @@ pub enum Family {
     HPM6200 = 0x0003,
     HPM6800 = 0x0004,
     HPM5300 = 0x0005,
+    HPM6E00 = 0x0006,
 }
 
 impl Family {
@@ -90,6 +91,7 @@ impl Display for Family {
             Family::HPM6200 => "HPM6200",
             Family::HPM6800 => "HPM6800",
             Family::HPM5300 => "HPM5300",
+            Family::HPM6E00 => "HPM6E00",
         };
         write!(f, "{name}")
     }
