@@ -33,13 +33,25 @@ sudo udevadm control --reload-rules
 # Write to flash (use default memory config)
 hpm_isp flash 0 write 0x400 flash.bin
 # Write to flash (use custom memory config)
-# Note: if hpm_isp.bin exists in the working directory, it will be used by default.
+# Note: if hpm_isp.toml exists in the working directory, it will be used by default.
 # So you don't need to pass -c option explicitly.
-hpm_isp flash -c hpm_isp.bin 0 write 0x400 flash.bin
+hpm_isp flash -c hpm_isp.toml 0 write 0x400 flash.bin
 # Read from flash
 hpm_isp flash 0 read 0x0 0x4000 flash.bin
-# Use config wizard to generate config file (save as hpm_isp.bin)
+# Use config wizard to generate config file (save as hpm_isp.toml)
 hpm_isp wizard
+```
+
+## Config file
+
+Memory config files are TOML:
+
+```toml
+[memory_config]
+flash_type = "sfdp_sdr"
+port_connection = "port_a_cs0"
+pin_group = "group1"
+quad_io_enable_sequence = "none"
 ```
 
 [![asciicast](https://asciinema.org/a/491359.svg)](https://asciinema.org/a/491359)

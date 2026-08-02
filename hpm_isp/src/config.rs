@@ -1,138 +1,95 @@
+use std::error::Error;
 use std::fs;
-use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use dialoguer::{theme::ColorfulTheme, Confirm, Select};
-use hpm_rt::{PinGroup, PortConnection, QuadIOEnableSequence, XpiNorConfigurationOption};
+use hpm_isp::memory_config::MemoryConfig;
+use serde::{Deserialize, Serialize};
 
-trait SelectPromptModel: Sized {
-    const COUNT: u32;
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct Config {
+    memory_config: MemoryConfig,
+}
 
-    fn to_printable_str(&self) -> &'static str;
-    fn from_num(num: u32) -> Option<Self>;
+impl Config {
+    pub(crate) fn new(memory_config: MemoryConfig) -> Self {
+        Self { memory_config }
+    }
 
-    fn show_select_prompt(prompt: &str) -> std::io::Result<Self> {
-        let items: Vec<&str> = (0..Self::COUNT)
-            .map(|num| Self::from_num(num).unwrap().to_printable_str())
-            .collect();
-        let selection = Select::with_theme(&ColorfulTheme::default())
-            .items(&items)
-            .with_prompt(prompt)
-            .default(0)
-            .interact()?;
-        Ok(Self::from_num(selection as u32).unwrap())
+    fn from_file<P>(path: P) -> Result<Self, Box<dyn Error>>
+    where
+        P: AsRef<Path>,
+    {
+        println!("Reading memory config from: {}", path.as_ref().display());
+
+        let config = fs::read_to_string(path)?;
+        Ok(Self::from_toml_str(&config)?)
+    }
+
+    pub(crate) fn to_toml_string(&self) -> Result<String, toml::ser::Error> {
+        toml::to_string_pretty(self)
+    }
+
+    fn into_memory_config(self) -> MemoryConfig {
+        self.memory_config
+    }
+
+    fn from_toml_str(config: &str) -> Result<Self, toml::de::Error> {
+        toml::from_str(config)
     }
 }
 
-impl SelectPromptModel for PinGroup {
-    const COUNT: u32 = 2;
-
-    fn from_num(num: u32) -> Option<Self> {
-        match num {
-            0 => Some(Self::Group1),
-            1 => Some(Self::Group2),
-            _ => None,
-        }
+pub(crate) fn read_memory_config_or_default(
+    config: Option<PathBuf>,
+    default_config_file: &str,
+) -> Result<Vec<u8>, Box<dyn Error>> {
+    if let Some(config_path) = config {
+        return read_memory_config(config_path);
     }
 
-    fn to_printable_str(&self) -> &'static str {
-        match self {
-            PinGroup::Group1 => "Group 1",
-            PinGroup::Group2 => "Group 2",
-        }
+    if Path::new(default_config_file).exists() {
+        return read_memory_config(default_config_file);
     }
+
+    Ok(MemoryConfig::default().to_bootrom_config())
 }
 
-impl SelectPromptModel for PortConnection {
-    const COUNT: u32 = 5;
-
-    fn to_printable_str(&self) -> &'static str {
-        match self {
-            PortConnection::PortACs0 => "Port A with CS 0",
-            PortConnection::PortBCs0 => "Port B with CS 0",
-            PortConnection::PortACs0PortBCs0 => "Port A with CS 0, Port B with CS 0",
-            PortConnection::PortACs0PortACs1 => "Port A with CS 0, Port A with CS 1",
-            PortConnection::PortBCs0PortBCs1 => "Port B with CS 0, Port B with CS 1",
-        }
-    }
-
-    fn from_num(num: u32) -> Option<Self> {
-        match num {
-            0 => Some(Self::PortACs0),
-            1 => Some(Self::PortBCs0),
-            2 => Some(Self::PortACs0PortBCs0),
-            3 => Some(Self::PortACs0PortACs1),
-            4 => Some(Self::PortBCs0PortBCs1),
-            _ => None,
-        }
-    }
-}
-
-impl SelectPromptModel for QuadIOEnableSequence {
-    const COUNT: u32 = 5;
-
-    fn to_printable_str(&self) -> &'static str {
-        match self {
-            QuadIOEnableSequence::None => "None",
-            QuadIOEnableSequence::Status1Bit6 => "Status Register 1 bit 6",
-            QuadIOEnableSequence::Status2Bit1 => "Status Register 2 bit 1",
-            QuadIOEnableSequence::Status2Bit7 => "Status Register 2 bit 7",
-            QuadIOEnableSequence::Status2Bit1ProgrammedBy0x31 => {
-                "Status Register 2 bit 1, programmed by 0x31"
-            }
-        }
-    }
-
-    fn from_num(num: u32) -> Option<Self> {
-        match num {
-            0 => Some(Self::None),
-            1 => Some(Self::Status1Bit6),
-            2 => Some(Self::Status2Bit1),
-            3 => Some(Self::Status2Bit7),
-            4 => Some(Self::Status2Bit1ProgrammedBy0x31),
-            _ => None,
-        }
-    }
-}
-
-pub fn config_wizard<P>(path: P) -> io::Result<()>
+fn read_memory_config<P>(path: P) -> Result<Vec<u8>, Box<dyn Error>>
 where
     P: AsRef<Path>,
 {
-    let config = XpiNorConfigurationOption::new();
+    Ok(Config::from_file(path)?
+        .into_memory_config()
+        .to_bootrom_config())
+}
 
-    // 1. Select port connection
-    let port = PortConnection::show_select_prompt("Select port connection")?;
-    // 2. Select pin group
-    let group = PinGroup::show_select_prompt("Select pin group")?;
-    // 3. Select Quad Enable sequence
-    let sequence = QuadIOEnableSequence::show_select_prompt("Select Quad Enable sequence")?;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    // Check if file exist
-    if let Ok(_) = fs::metadata(&path) {
-        let replace = Confirm::with_theme(&ColorfulTheme::default())
-            .with_prompt(format!(
-                "{} already exists, overwrite it?",
-                path.as_ref().to_str().unwrap()
-            ))
-            .interact()?;
-        if !replace {
-            return Ok(());
-        }
+    #[test]
+    fn parses_memory_config_section() {
+        let config = Config::from_toml_str(
+            r#"
+[memory_config]
+flash_type = "read_1_4_4"
+port_connection = "port_b_cs0"
+pin_group = "group2"
+quad_io_enable_sequence = "status2_bit1_programmed_by_0x31"
+"#,
+        )
+        .unwrap();
+
+        assert_eq!(config.into_memory_config().to_bootrom_config().len(), 12);
     }
 
-    let mut output_file = fs::File::create(&path)?;
-    config
-        .connect_port(port)
-        .pin_group(group)
-        .quad_io_enable_sequence(sequence)
-        .write(&mut output_file)
-        .map_err(|err| io::Error::new(io::ErrorKind::Other, err.to_string()))?;
+    #[test]
+    fn serializes_memory_config_section() {
+        let config = Config::new(MemoryConfig::default())
+            .to_toml_string()
+            .unwrap();
 
-    println!(
-        "Config file was successfully saved to: {}",
-        fs::canonicalize(path)?.to_str().unwrap()
-    );
-
-    Ok(())
+        assert!(config.contains("[memory_config]"));
+        assert!(config.contains("flash_type = \"sfdp_sdr\""));
+    }
 }

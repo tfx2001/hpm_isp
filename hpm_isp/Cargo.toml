@@ -15,4 +15,7 @@ dialoguer = "0.10"
 zerocopy = { version = "0.7", features = ["derive"] }
 num_enum = "0.7"
 hpm-rt = "0.1"
+serde = { version = "1", features = ["derive"] }
 strum = { version = "0.25", features = ["derive"] }
+thiserror = "2"
+toml = "1.1"

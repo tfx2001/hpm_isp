@@ -1,24 +1,21 @@
-#![allow(irrefutable_let_patterns)]
-
 mod config;
+mod wizard;
 
 use std::error::Error;
-use std::fs;
-use std::io::Read;
 use std::num::ParseIntError;
 use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
-use config::config_wizard;
+use config::read_memory_config_or_default;
 use indicatif::{ProgressBar, ProgressStyle};
+use wizard::config_wizard;
 
 use hpm_isp::{
     hid,
     isp_command::{IspCommand, MemoryId},
 };
-use hpm_rt::XpiNorConfigurationOption;
 
-const DEFAULT_CONFIG_FILE: &'static str = "hpm_isp.bin";
+const DEFAULT_CONFIG_FILE: &str = "hpm_isp.toml";
 
 #[derive(Parser)]
 #[clap(version, about)]
@@ -75,7 +72,7 @@ fn parse_hex(s: &str) -> Result<u32, ParseIntError> {
     if s.starts_with("0x") {
         u32::from_str_radix(s.trim_start_matches("0x"), 16)
     } else {
-        u32::from_str_radix(s, 10)
+        s.parse::<u32>()
     }
 }
 
@@ -91,51 +88,33 @@ fn xpi_in_range(s: &str) -> Result<MemoryId, String> {
 fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
 
-    if let Commands::Flash {
-        id: memory_id,
-        command: flash_command,
-        config,
-    } = cli.command
-    {
-        let device = hid::HpmDevice::open().or_else(|_| Err("can't open HPMicro usb device"))?;
-        let mut memory_config_bin = Vec::new();
-        let is_default = config.is_none();
-        let config_path = config.unwrap_or(DEFAULT_CONFIG_FILE.into());
+    match cli.command {
+        Commands::Flash {
+            id: memory_id,
+            command: flash_command,
+            config,
+        } => {
+            let device = hid::HpmDevice::open().map_err(|_| "can't open HPMicro usb device")?;
+            let memory_config_bin = read_memory_config_or_default(config, DEFAULT_CONFIG_FILE)?;
 
-        println!("Found chip: {}", device.family());
+            println!("Found chip: {}", device.family());
 
-        match fs::File::open(config_path) {
-            Ok(mut config_file) => {
-                memory_config_bin.resize(12, 0);
-                config_file.read_exact(memory_config_bin.as_mut_slice())?;
-                if memory_config_bin[3] != 0xFC || memory_config_bin[2] != 0xF9 {
-                    return Err("Invalid memory config file".into());
+            // Config memory
+            device.write_memory(MemoryId::ILM, 0x200, &memory_config_bin, |_, _| {})?;
+            device.configure_memory(memory_id, MemoryId::ILM.base_address() + 0x200)?;
+
+            match flash_command {
+                FlashCommands::Write { offset, file } => {
+                    write_file(file, memory_id, offset, &device)?;
+                }
+                FlashCommands::Read { offset, size, file } => {
+                    read_file(file, memory_id, offset, size as usize, &device)?;
                 }
             }
-            // Use default config file and it isn't exists
-            Err(_) if is_default => {
-                let xpi_config = XpiNorConfigurationOption::new();
-                xpi_config.write(&mut memory_config_bin)?;
-            }
-            Err(err) => {
-                Err(err)?;
-            }
         }
-
-        // Config memory
-        device.write_memory(MemoryId::ILM, 0x200, &memory_config_bin, |_, _| {})?;
-        device.configure_memory(memory_id, MemoryId::ILM.base_address() + 0x200)?;
-
-        match flash_command {
-            FlashCommands::Write { offset, file } => {
-                write_file(file, memory_id, offset, &device)?;
-            }
-            FlashCommands::Read { offset, size, file } => {
-                read_file(file, memory_id, offset, size as usize, &device)?;
-            }
+        Commands::Wizard { path } => {
+            config_wizard(path)?;
         }
-    } else if let Commands::Wizard { path } = cli.command {
-        config_wizard(path)?;
     }
 
     Ok(())
