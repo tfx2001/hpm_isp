@@ -216,6 +216,98 @@ pub trait Interface {
     fn read(&self, packet: &mut Packet) -> Result<u16, Error>;
 }
 
+fn write_from_reader<D, R, F>(
+    device: &D,
+    memory_id: MemoryId,
+    offset: u32,
+    total_length: usize,
+    mut reader: R,
+    update_progress: F,
+) -> Result<(), Error>
+where
+    D: Interface + ?Sized,
+    R: Read,
+    F: Fn(usize, usize),
+{
+    let command_length = mem::size_of::<WriteMemory>();
+    let mut packet: Packet = WriteMemory::new(
+        offset + memory_id.base_address(),
+        total_length as u32,
+        memory_id,
+    )
+    .into();
+
+    if total_length == 0 {
+        device.write(&packet, command_length as u16)?;
+        device.read(&mut packet)?;
+        let resp = GenericCommandResponse::read_from_prefix(&packet.payload[..]).unwrap();
+        return resp.into();
+    }
+
+    let mut bytes_written = 0;
+    let mut max_length = packet.payload.len() - command_length;
+    let mut payload_offset = command_length;
+
+    while bytes_written < total_length {
+        let write_length = cmp::min(max_length, total_length - bytes_written);
+        reader.read_exact(&mut packet.payload[payload_offset..payload_offset + write_length])?;
+        device.write(&packet, (payload_offset + write_length) as u16)?;
+        bytes_written += write_length;
+        update_progress(bytes_written, total_length);
+
+        packet.arg_num = 0;
+        packet.cmd_type = CommandType::DataOnly as u8;
+        payload_offset = 0;
+        max_length = packet.payload.len();
+    }
+
+    device.read(&mut packet)?;
+    let resp = GenericCommandResponse::read_from_prefix(&packet.payload[..]).unwrap();
+    resp.into()
+}
+
+fn read_to_writer<D, W, F>(
+    device: &D,
+    memory_id: MemoryId,
+    offset: u32,
+    total_length: usize,
+    mut writer: W,
+    update_progress: F,
+) -> Result<(), Error>
+where
+    D: Interface + ?Sized,
+    W: Write,
+    F: Fn(usize, usize),
+{
+    let mut packet: Packet = ReadMemory::new(
+        offset + memory_id.base_address(),
+        total_length as u32,
+        memory_id,
+    )
+    .into();
+    let mut bytes_read = 0;
+
+    device.write(&packet, mem::size_of::<ReadMemory>() as u16)?;
+    device.read(&mut packet)?;
+    let resp = GenericCommandResponse::read_from_prefix(&packet.payload[..]).unwrap();
+    if resp.status != 0 {
+        return resp.into();
+    }
+
+    while bytes_read < total_length {
+        let length = device.read(&mut packet)? as usize;
+        if length == 0 || length > packet.payload.len() || length > total_length - bytes_read {
+            return Err(Error::TransferError);
+        }
+
+        writer.write_all(&packet.payload[..length])?;
+        bytes_read += length;
+        update_progress(bytes_read, total_length);
+    }
+
+    Ok(())
+}
+
 pub trait IspCommand: Interface {
     fn query_runtime_environment(&self, id: RuntimeEnvironment) -> Result<(), Error> {
         let mut packet: Packet = QueryRuntimeEnvironment::new(id).into();
@@ -254,34 +346,7 @@ pub trait IspCommand: Interface {
     where
         F: Fn(usize, usize),
     {
-        let mut bytes_writen = 496;
-        let mut packet: Packet = WriteMemory::new(
-            offset + memory_id.base_address(),
-            data.len() as u32,
-            memory_id,
-        )
-        .into();
-        // Write first package
-        packet.payload[12..cmp::min(508, data.len() + 12)]
-            .copy_from_slice(&data[..cmp::min(508 - 12, data.len())]);
-        self.write(&packet, cmp::min(508, data.len() + 12) as u16)?;
-        update_progress(496, data.len());
-        // Write left bytes
-        if data.len() > (508 - 12) {
-            packet.arg_num = 0;
-            packet.cmd_type = CommandType::DataOnly as u8;
-
-            data[508 - 12..].chunks(508).try_for_each(|i| {
-                packet.payload[..i.len()].copy_from_slice(i);
-                bytes_writen += i.len();
-                update_progress(bytes_writen, data.len());
-                self.write(&packet, i.len() as u16)
-            })?;
-        }
-
-        self.read(&mut packet)?;
-        let resp = GenericCommandResponse::read_from_prefix(&packet.payload[..]).unwrap();
-        resp.into()
+        write_from_reader(self, memory_id, offset, data.len(), data, update_progress)
     }
 
     fn read_memory<F>(
@@ -294,30 +359,7 @@ pub trait IspCommand: Interface {
     where
         F: Fn(usize, usize),
     {
-        let mut packet: Packet = ReadMemory::new(
-            offset + memory_id.base_address(),
-            data.len() as u32,
-            memory_id,
-        )
-        .into();
-        let mut bytes_read = 0;
-        let total_bytes = data.len();
-
-        self.write(&packet, mem::size_of::<ReadMemory>() as u16)?;
-        self.read(&mut packet)?;
-        let resp = GenericCommandResponse::read_from_prefix(&packet.payload[..]).unwrap();
-
-        if resp.status == 0 {
-            data.chunks_mut(508).try_for_each(|i| {
-                let length = self.read(&mut packet)?;
-                i.copy_from_slice(&packet.payload[..length as usize]);
-                bytes_read += length as usize;
-                update_progress(bytes_read, total_bytes);
-                Ok(())
-            })
-        } else {
-            resp.into()
-        }
+        read_to_writer(self, memory_id, offset, data.len(), data, update_progress)
     }
 
     fn write_file<P, F>(
@@ -331,38 +373,16 @@ pub trait IspCommand: Interface {
         P: AsRef<Path>,
         F: Fn(usize, usize),
     {
-        let mut file = File::open(path)?;
+        let file = File::open(path)?;
         let file_info = file.metadata()?;
-        let mut bytes_left = file_info.len() as usize;
-        let mut max_length = 508 - 12;
-        let mut slice_offset: usize = 12;
-        let mut write_length: usize;
-        let mut packet: Packet = WriteMemory::new(
-            offset + memory_id.base_address(),
-            file_info.len() as u32,
+        write_from_reader(
+            self,
             memory_id,
+            offset,
+            file_info.len() as usize,
+            file,
+            update_progress,
         )
-        .into();
-
-        while bytes_left > 0 {
-            write_length = cmp::min(max_length, bytes_left);
-            file.read_exact(&mut packet.payload[slice_offset..write_length + slice_offset])?;
-            self.write(&packet, cmp::min(508, (write_length + slice_offset) as u16))?;
-            bytes_left -= write_length;
-            update_progress(
-                file_info.len() as usize - bytes_left,
-                file_info.len() as usize,
-            );
-
-            packet.arg_num = 0;
-            packet.cmd_type = CommandType::DataOnly as u8;
-            slice_offset = 0;
-            max_length = 508;
-        }
-
-        self.read(&mut packet)?;
-        let resp = GenericCommandResponse::read_from_prefix(&packet.payload[..]).unwrap();
-        resp.into()
     }
 
     fn read_file<P, F>(
@@ -377,29 +397,8 @@ pub trait IspCommand: Interface {
         P: AsRef<Path>,
         F: Fn(usize, usize),
     {
-        let mut file = File::create(path)?;
-        let mut bytes_left = total_length;
-        let mut packet: Packet = ReadMemory::new(
-            offset + memory_id.base_address(),
-            total_length as u32,
-            memory_id,
-        )
-        .into();
-
-        self.write(&packet, mem::size_of::<ReadMemory>() as u16)?;
-        self.read(&mut packet)?;
-        let resp = GenericCommandResponse::read_from_prefix(&packet.payload[..]).unwrap();
-        if resp.status == 0 {
-            while bytes_left > 0 {
-                let length = self.read(&mut packet)?;
-                file.write_all(&packet.payload[..length as usize])?;
-                bytes_left -= length as usize;
-                update_progress(total_length - bytes_left, total_length);
-            }
-            Ok(())
-        } else {
-            resp.into()
-        }
+        let file = File::create(path)?;
+        read_to_writer(self, memory_id, offset, total_length, file, update_progress)
     }
 }
 
