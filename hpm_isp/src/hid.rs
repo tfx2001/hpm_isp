@@ -107,9 +107,10 @@ impl HpmDevice {
         let api = HidApi::new().unwrap();
         // Connect to device using its VID and PID
         let (device, family) = Family::iter()
-            .find_map(|chip| match api.open(Family::pid(), chip.vid()).ok() {
-                Some(device) => Some((device, chip)),
-                None => None,
+            .find_map(|chip| {
+                api.open(Family::pid(), chip.vid())
+                    .ok()
+                    .map(|device| (device, chip))
             })
             .ok_or("Can't find any HPMicro device")?;
         Ok(Self { device, family })

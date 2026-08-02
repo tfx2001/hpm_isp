@@ -346,7 +346,7 @@ pub trait IspCommand: Interface {
 
         while bytes_left > 0 {
             write_length = cmp::min(max_length, bytes_left);
-            file.read(&mut packet.payload[slice_offset..write_length + slice_offset])?;
+            file.read_exact(&mut packet.payload[slice_offset..write_length + slice_offset])?;
             self.write(&packet, cmp::min(508, (write_length + slice_offset) as u16))?;
             bytes_left -= write_length;
             update_progress(
