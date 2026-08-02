@@ -1,75 +1,120 @@
-# Reference:
-# https://eugene-babichenko.github.io/blog/2020/05/09/github-actions-cross-platform-auto-releases/
-
 name: Release
+
 on:
   release:
-    types: [ created ]
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
 env:
   BIN_NAME: hpm_isp
+  CARGO_TERM_COLOR: always
+  RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+
 jobs:
   build-release:
-    name: build-release
+    name: build-${{ matrix.build }}
+    permissions:
+      contents: read
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         build: [linux, macos, win-msvc]
         include:
           - build: linux
-            os: ubuntu-latest
+            os: ubuntu-24.04
             rust: stable
             target: x86_64-unknown-linux-gnu
+            exe_suffix: ""
+            archive: tar.gz
           - build: macos
-            os: macos-latest
+            os: macos-15
             rust: stable
-            target: x86_64-apple-darwin
+            target: aarch64-apple-darwin
+            exe_suffix: ""
+            archive: tar.gz
           - build: win-msvc
-            os: windows-2019
+            os: windows-2022
             rust: stable
             target: x86_64-pc-windows-msvc
+            exe_suffix: .exe
+            archive: zip
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v7
         with:
           fetch-depth: 1
+          ref: ${{ env.RELEASE_TAG }}
+
       - name: Install packages (Ubuntu)
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-24.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libusb-1.0-0-dev libudev-dev
+
       - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: ${{ matrix.rust }}
-          profile: minimal
-          override: true
-          target: ${{ matrix.target }}
-      - name: Build release binary
-        run: cargo build --target ${{ matrix.target }} --verbose --release
-      - name: Build archive
-        shell: bash
         run: |
-          outdir="./target/${{ env.TARGET_DIR }}/release"
-          staging="${{ env.BIN_NAME }}-${{ github.event.release.tag_name }}-${{ matrix.target }}"
-          mkdir -p "$staging"
-          cp {README.md,LICENSE,99-hpm_bootrom.rules} "$staging/"
-          if [ "${{ matrix.os }}" = "windows-2019" ]; then
-            cp "target/${{ matrix.target }}/release/${{ env.BIN_NAME }}.exe" "$staging/"
-            cd "$staging"
-            7z a "../$staging.zip" .
-            echo "ASSET=$staging.zip" >> $GITHUB_ENV
-          else
-            cp "target/${{ matrix.target }}/release/${{ env.BIN_NAME }}" "$staging/"
-            tar czf "$staging.tar.gz" -C "$staging" .
-            echo "ASSET=$staging.tar.gz" >> $GITHUB_ENV
-          fi
-      - name: Upload release archive
-        uses: actions/upload-release-asset@v1.0.1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          rustup toolchain install ${{ matrix.rust }} --profile minimal
+          rustup default ${{ matrix.rust }}
+
+      - name: Cache Cargo dependencies
+        uses: actions/cache@v6
         with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: ${{ env.ASSET }}
-          asset_name: ${{ env.ASSET }}
-          asset_content_type: application/octet-stream
+          path: |
+            ~/.cargo/git
+            ~/.cargo/registry
+          key: cargo-${{ runner.os }}-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-${{ matrix.target }}-
+
+      - name: Build and upload artifact
+        uses: ./.github/actions/build-artifact
+        with:
+          binary-name: ${{ env.BIN_NAME }}
+          artifact-version: ${{ env.RELEASE_TAG }}
+          target: ${{ matrix.target }}
+          profile: release
+          archive: ${{ matrix.archive }}
+          exe-suffix: ${{ matrix.exe_suffix }}
+          artifact-name: release-${{ matrix.target }}
+          retention-days: 7
+
+  publish-release:
+    name: publish-release
+    needs: build-release
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    timeout-minutes: 10
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: dist
+          pattern: release-*
+          merge-multiple: true
+
+      - name: Generate SHA-256 checksums
+        working-directory: dist
+        run: sha256sum ./* > SHA256SUMS
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: dist/*
+          fail_on_unmatched_files: true
+          token: ${{ secrets.GITHUB_TOKEN }}

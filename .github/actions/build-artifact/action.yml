@@ -1,0 +1,92 @@
+name: Build Rust artifact
+description: Build, package, and upload the hpm_isp binary as a workflow artifact.
+
+inputs:
+  binary-name:
+    description: Binary name to package.
+    required: true
+  artifact-version:
+    description: Version string to include in the packaged archive name.
+    required: true
+  target:
+    description: Rust target triple to build.
+    required: true
+  profile:
+    description: Cargo profile to build.
+    required: false
+    default: debug
+  archive:
+    description: Archive format to create.
+    required: false
+    default: tar.gz
+  exe-suffix:
+    description: Executable suffix for the target platform.
+    required: false
+    default: ""
+  artifact-name:
+    description: Workflow artifact name.
+    required: true
+  retention-days:
+    description: Workflow artifact retention period.
+    required: false
+    default: "7"
+  locked:
+    description: Whether to pass --locked to cargo build.
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Install Rust target
+      shell: bash
+      run: rustup target add "${{ inputs.target }}"
+
+    - name: Build binary
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        args=(build --target "${{ inputs.target }}" --verbose)
+        if [ "${{ inputs.locked }}" = "true" ]; then
+          args+=(--locked)
+        fi
+        if [ "${{ inputs.profile }}" = "release" ]; then
+          args+=(--release)
+        fi
+
+        cargo "${args[@]}"
+
+    - name: Build archive
+      id: archive
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        staging="${{ inputs.binary-name }}-${{ inputs.artifact-version }}-${{ inputs.target }}"
+        binary="target/${{ inputs.target }}/${{ inputs.profile }}/${{ inputs.binary-name }}${{ inputs.exe-suffix }}"
+
+        mkdir -p "$staging"
+        cp README.md LICENSE 99-hpm_bootrom.rules "$staging/"
+        cp "$binary" "$staging/"
+
+        if [ "${{ inputs.archive }}" = "zip" ]; then
+          asset="$staging.zip"
+          (cd "$staging" && 7z a "../$asset" .)
+        elif [ "${{ inputs.archive }}" = "tar.gz" ]; then
+          asset="$staging.tar.gz"
+          tar czf "$asset" -C "$staging" .
+        else
+          echo "Unsupported archive format: ${{ inputs.archive }}" >&2
+          exit 1
+        fi
+
+        echo "asset=$asset" >> "$GITHUB_OUTPUT"
+
+    - name: Upload workflow artifact
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ steps.archive.outputs.asset }}
+        if-no-files-found: error
+        retention-days: ${{ inputs.retention-days }}

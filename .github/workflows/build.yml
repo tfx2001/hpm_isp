@@ -2,23 +2,38 @@ name: Build
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
+
+permissions:
+  contents: read
 
 env:
+  BIN_NAME: hpm_isp
   CARGO_TERM_COLOR: always
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v7
       - name: Install dependencies
         run: sudo apt install libusb-1.0-0-dev libudev-dev -y
-      - name: Build
-        run: cargo build --verbose
+      - name: Install Rust components
+        run: rustup component add rustfmt clippy
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Run Clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - name: Build and upload artifact
+        uses: ./.github/actions/build-artifact
+        with:
+          binary-name: ${{ env.BIN_NAME }}
+          artifact-version: ${{ github.sha }}
+          target: x86_64-unknown-linux-gnu
+          profile: release
+          artifact-name: build-x86_64-unknown-linux-gnu
       - name: Run tests
         run: cargo test --verbose
