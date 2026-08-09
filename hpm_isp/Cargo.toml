@@ -5,6 +5,7 @@ edition = "2021"
 authors = ["tfx2001 <tfx2001@outlook.com>"]
 license = "MIT"
 description = "ISP tool for HPMicro MCUs."
+readme = "../README.md"
 repository = "https://github.com/tfx2001/hpm_isp"
 
 [dependencies]
