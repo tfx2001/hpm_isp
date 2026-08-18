@@ -67,7 +67,7 @@ runs:
         binary="target/${{ inputs.target }}/${{ inputs.profile }}/${{ inputs.binary-name }}${{ inputs.exe-suffix }}"
 
         mkdir -p "$staging"
-        cp README.md LICENSE 99-hpm_bootrom.rules "$staging/"
+        cp README.md LICENSE 70-hpm_bootrom.rules "$staging/"
         cp "$binary" "$staging/"
 
         if [ "${{ inputs.archive }}" = "zip" ]; then
