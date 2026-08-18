@@ -1,0 +1,14 @@
+# HPMicro MCU BootROM
+
+# HPM6700/HPM6400
+SUBSYSTEM=="usb", ATTRS{idVendor}=="34b7", ATTRS{idProduct}=="0001", TAG+="uaccess"
+# HPM6300
+SUBSYSTEM=="usb", ATTRS{idVendor}=="34b7", ATTRS{idProduct}=="0002", TAG+="uaccess"
+# HPM6200
+SUBSYSTEM=="usb", ATTRS{idVendor}=="34b7", ATTRS{idProduct}=="0003", TAG+="uaccess"
+# HPM6800
+SUBSYSTEM=="usb", ATTRS{idVendor}=="34b7", ATTRS{idProduct}=="0004", TAG+="uaccess"
+# HPM5300
+SUBSYSTEM=="usb", ATTRS{idVendor}=="34b7", ATTRS{idProduct}=="0005", TAG+="uaccess"
+# HPM6E00
+SUBSYSTEM=="usb", ATTRS{idVendor}=="34b7", ATTRS{idProduct}=="0006", TAG+="uaccess"
