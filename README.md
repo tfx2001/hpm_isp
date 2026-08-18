@@ -23,7 +23,7 @@ cargo install hpm_isp
 ### For Linux users
 
 ```shell
-sudo cp 99-hpm_bootrom.rules /etc/udev/rules.d/
+sudo cp 70-hpm_bootrom.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules
 ```
 
